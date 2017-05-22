@@ -1,0 +1,670 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      body{
+        margin:0;
+      }
+    </style>
+
+
+    <script>
+
+    //variables
+
+    var s={
+        rows: 10,
+        cols: 10,
+        width: 30,
+        height: 30
+    };
+
+
+      var c; // context
+      var selected; // array of selected boxes
+      var grid;
+      var defaultPic; //png files of each type of unit
+      var robotPic;
+      var obstaclePic;
+      var heroPic;
+      var treasurePic;
+      var selectedPic;
+      var heroPlaced = false; // boolean check for hero
+      var stage; // 0=setup, 1=play, 2=end
+      var bots; // array of bot locations
+      var treasures; // array of treasure locations and values
+      var heroKilled; // boolean check for hero alive
+      var round;
+      var score;
+
+      //Initialize canvas and variables when loading window
+      window.onload = function(){
+        var canvas = document.getElementById("gCanvas");
+        c = canvas.getContext("2d");
+        init();
+      }
+
+      //check for key presses
+      document.onkeypress = function(evt) {
+        evt = evt || window.event;
+        var charCode = evt.keyCode || evt.which;
+        var charStr = String.fromCharCode(charCode);
+
+        //setup stage.
+        if(stage ==0 ){
+          if(isAnySelected()){
+            switch(charStr){
+              case "o":
+                place(2,0);
+              break;
+
+              case "k":
+                place(3,0);
+              break;
+
+              case "h":
+
+              if(!heroPlaced){
+                place(1,0);
+                heroPlaced = true;
+              } else {
+                  alert("can only have 1 hero on grid");
+              }
+              break;
+
+              case "9":
+                place(4,9);
+              break;
+
+              case "8":
+              place(4,8);
+              break;
+
+              case "7":
+                place(4,7);
+              break;
+
+              case "6":
+              place(4,6);
+              break;
+
+              case "5":
+              place(4,5);
+              break;
+
+              case "4":
+              place(4,4);
+              break;
+
+              case "3":
+              place(4,3);
+              break;
+
+              case "2":
+              place(4,2);
+              break;
+
+              case "1":
+              place(4,1);
+              break;
+
+              default:
+                alert("Not valid Input");
+
+            }
+          }  else {
+            alert("Select a cell");
+          }
+          //play stage
+        } else if(stage == 1){
+            switch(charStr){
+              case "a":
+                move(1);
+              break;
+
+              case "d":
+                move(2);
+              break;
+
+              case "w":
+                move(3);
+              break;
+
+              case "x":
+                move(4);
+              break;
+
+              default:
+                alert("Not a valid move");
+            }
+          }
+        drawCanvas();
+      }
+      //place an object on the grid.
+      // Hero = 1, Obstacle = 2, Robot = 3, Treasure = 4, tValue = treasure value
+      function place(o,tValue){
+        var x = getSelected()[1];
+        var y = getSelected()[0];
+        grid[y][x] = o;
+        //if object is robot or treasure, add to relevant array
+        if(o==3){
+          bots.push([x,y]);
+        }
+        if(o==4){
+          treasures.push([x,y,tValue]);
+        }
+        clearSelect();
+      }
+
+      //check for clicking on grid
+      window.onclick = function(e){
+        var mX;// mouse position
+        var mY;
+        var clickedX; //cell
+        var clickedY;
+        mX = e.pageX;
+        mY = e.pageY;
+
+        if(Math.floor(mX/s.width)<s.cols && Math.floor(mY/s.height)<s.rows){
+          clickedX = Math.floor(mX/s.width);
+          clickedY = Math.floor(mY/s.height);
+          select(clickedX,clickedY);
+          drawCanvas();
+        }
+      }
+
+      //initialize all variables
+      function init(){
+        defaultPic = new Image();
+        robotPic = new Image();
+        obstaclePic = new Image();
+        heroPic = new Image();
+        treasurePic = new Image();
+        selectedPic = new Image();
+
+        defaultPic.src = "defaultBox.png";
+        robotPic.src = "robot.png";
+        obstaclePic.src = "obstacle.png";
+        heroPic.src = "hero.png";
+        treasurePic.src = "treasure.png";
+        selectedPic.src = "selected.png";
+
+        score = 0;
+        round = 0;
+        heroKilled = false;
+        treasures = new Array();
+        bots= new Array();
+        selectArrInit();
+        gridInit();
+        stage = 0;
+
+        defaultPic.onload = function(){
+          drawCanvas();
+        }
+      }
+
+      //Attempt to move hero in 'm' direction
+      // 1=left, 2=right, 3=up, 4=down
+      function move(m){
+
+        var heroX=getHeroLoc()[0];
+        var heroY=getHeroLoc()[1];
+        var newHeroX;
+        var newHeroY;
+
+        if(heroCanMoveHere(m)){
+
+          grid[heroY][heroX] = 0;
+
+          if(m==1){
+            newHeroX = heroX-1;
+            newHeroY = heroY;
+          }
+
+          if(m==2){
+            newHeroX = heroX+1;
+            newHeroY = heroY;
+          }
+
+          if(m==3){
+            newHeroX = heroX;
+            newHeroY = heroY-1;
+          }
+
+          if(m==4){
+            newHeroX = heroX;
+            newHeroY = heroY+1;
+          }
+
+          //pick up treasure
+          if(isTreasure(newHeroX,newHeroY)){
+            takeTreasure(newHeroX,newHeroY)
+          }
+          grid[newHeroY][newHeroX] = 1;
+
+          //check if game should end due to no moves possible
+        } else if(!heroCanMoveAtAll() && !botsCanMoveAtAll()){
+          stage = 2;
+          alert("Noone can move at all. Game ends here.");
+        } else {
+          //player attempts to move to an invalid location
+          alert("You cannot move there. Your turn is over.");
+        }
+
+        //Evil Robots turn to move
+        botMove();
+
+        //increment round
+        round++;
+
+        //Draw to canvas
+        drawCanvas();
+
+        //Check for game end conditions
+        if(heroKilled){
+          stage = 2;
+          alert("The hero died. You lose.")
+        }
+
+        //No more treasures
+        if(treasures.length<=0){
+          stage = 2;
+          alert("All treasures collected. You win with a score of "+score);
+        }
+      }
+
+      //check if hero can move at all
+      function heroCanMoveAtAll(){
+        for(var i=1; i<=4; i++){
+          if(heroCanMoveHere(i)){
+            return true;
+          }
+        }
+        return false;
+      }
+
+      //check if hero is able to move in direction m
+      function heroCanMoveHere(m){
+        var heroX=getHeroLoc()[0];
+        var heroY=getHeroLoc()[1];
+
+        if(m==1){
+          if(isOutOfBounds(heroX-1,heroY) || isObstacle(heroX-1, heroY)){
+            return false;
+          }
+        }
+
+        if(m==2){
+          if(isOutOfBounds(heroX+1,heroY) || isObstacle(heroX+1, heroY)){
+            return false;
+          }
+        }
+
+        if(m==3){
+          if(isOutOfBounds(heroX,heroY-1) || isObstacle(heroX, heroY-1)){
+            return false;
+          }
+        }
+
+        if(m==4){
+          if(isOutOfBounds(heroX,heroY+1) || isObstacle(heroX, heroY+1)){
+            return false;
+          }
+        }
+
+        return true;
+      }
+
+      //Evil robot attempts to move
+      function botMove(){
+        for(var i=0; i<bots.length; i++){
+          var botX = bots[i][0];
+          var botY = bots[i][1];
+          var newBotX;
+          var newBotY;
+
+
+
+          //If a hero is in range of 1 move, robot kills hero
+          if(heroInRange(botX,botY)){
+            newBotX = getHeroLoc()[0];
+            newBotY = getHeroLoc()[1];
+            updateBotPos(botX,botY,newBotX,newBotY,i);
+            heroKilled=true;
+
+            //if treasure is in range of 1 move, robot eats treasure
+          } else if(treasureInRange(botX,botY)!=-1){
+            newBotX = treasures[treasureInRange(botX,botY)][0];
+            newBotY = treasures[treasureInRange(botX,botY)][1];
+            treasures.splice(treasureInRange(botX,botY),1); // delete treasure
+            updateBotPos(botX,botY,newBotX,newBotY,i);
+
+            //if bot is able to move at all, it moves randomly to a possible cell
+          } else if(botCanMove(botX,botY).length >0){
+
+            var newPos = botCanMove(botX,botY)[Math.floor(Math.random()*botCanMove(botX,botY).length)];
+            newBotX = newPos[0];
+            newBotY = newPos[1];
+            updateBotPos(botX,botY,newBotX,newBotY,i);
+          }
+        }
+      }
+
+      //set new robot position
+      // o = old, n = new
+      function updateBotPos(oX, oY, nX, nY, index){
+
+        grid[oY][oX] = 0;
+        bots[index][0] = nX;
+        bots[index][1] = nY;
+        grid[nY][nX] = 3;
+      }
+
+      //check if any of the evil robots can move
+      function botsCanMoveAtAll(){
+        for(var i=0; i<bots.length;i++){
+          var botX = bots[i][0];
+          var botY = bots[i][1];
+          if(botCanMove(botX,botY).length>0){
+            return true;
+          }
+        }
+        return false;
+      }
+
+      //check if a bot at bX,bY is able to move anywhere
+      //return an array of possible cells to move to
+      function botCanMove(bX,bY){
+        var availableCells = new Array();
+        //Check all surrounding squares (including diagonals)
+        for(var i=-1; i<=1;i++){
+          for(var j=-1; j<=1;j++){
+            var nextX = bX + j;
+            var nextY = bY + i;
+            //bot cannot go out of grid, on an obstacle, or on another robot
+            if(!isOutOfBounds(nextX,nextY) && !isObstacle(nextX,nextY) && !isRobot(nextX,nextY)){
+              if(i==0 && j==0){}else{
+              availableCells.push([nextX,nextY]);
+            }
+            }
+          }
+        }
+        return availableCells;
+      }
+
+      //determine if there is a robot in given cell
+      function isRobot(rX, rY){
+        for(var i=0; i<bots.length; i++){
+          if(bots[i][0] == rX && bots[i][1] == rY){
+            return true;
+          }
+        }
+        return false;
+      }
+
+      //determine if there is treasure in a given cell
+      function isTreasure(tX, tY){
+        for(var i=0; i<treasures.length; i++){
+          if(treasures[i][0] == tX && treasures[i][1] == tY){
+            return true;
+          }
+        }
+        return false;
+      }
+
+      //hero takes treasure at given location
+      function takeTreasure(tX,tY){
+        for(var t=0; t<treasures.length; t++){
+          if(tX==treasures[t][0] && tY==treasures[t][1]){
+            score += treasures[t][2];
+            break;
+          }
+        }
+        treasures.splice(t,1); // delete treasure
+      }
+
+      //check if given cell is out of bounds
+      function isOutOfBounds(x,y){
+        if(x<0 || x>9 || y<0 || y>9){
+          return true;
+        } else {
+          return false;
+        }
+      }
+
+      //check if hero is in range of 1 move from given cell
+      function heroInRange(bX,bY){
+        var heroX=getHeroLoc()[0];
+        var heroY=getHeroLoc()[1];
+
+        if(Math.abs(heroX-bX)<=1 && Math.abs(heroY-bY)<=1){
+          return true;
+        } else {
+          return false;
+        }
+      }
+
+      //return index of treasure or -1 if no treasure in range
+      function treasureInRange(bX, bY){
+        for(var t=0; t<treasures.length; t++){
+          if(Math.abs(treasures[t][0]-bX)<=1 && Math.abs(treasures[t][1]-bY)<=1){
+            return t;
+          }
+        }
+        return -1;
+      }
+
+      //check if cell contains an obstacle
+      function isObstacle(oX, oY){
+
+        if(grid[oY][oX]==2){
+          return true;
+        } else {
+          return false;
+        }
+      }
+
+      //return location of hero
+      function getHeroLoc(){
+        for(var i=0; i<s.rows;i++){
+          for(var j=0; j<s.cols; j++){
+            if(grid[i][j] == 1){
+              return [j,i];
+            }
+          }
+        }
+        return [-1,-1];
+      }
+
+      //function called when user presses play.
+      //checks if game is playable and displays according message
+      function play(){
+        if(getHeroLoc()[0]==-1 && getHeroLoc()[1]==-1){
+          alert("You must place a hero before starting the game");
+        } else if(stage==2){
+          alert("Restart game. Game has already ended.")
+        } else if(treasures.length<=0){
+          stage = 2;
+          alert("All treasures collected. You win with a score of "+score);
+        } else {
+          stage = 1;
+          alert("Move with a,w,d,x and try to collect the treasures without dying!");
+          drawCanvas();
+        }
+      }
+
+      //end function called when user presses the end button
+      function end(){
+          if(stage==2){
+            alert("Game is already over.");
+          } else {
+            stage = 2;
+            alert("You have manually ended the game.");
+          }
+      }
+
+      //initialize grid
+      function gridInit(){
+        grid = new Array(s.rows);
+        for(var i=0; i<s.cols;i++){
+          grid[i] = new Array(s.cols);
+        }
+
+        for(var i=0; i<s.rows;i++){
+          for(var j=0; j<s.cols; j++){
+            grid[i][j] = 0;
+          }
+        }
+      }
+
+      //initialize the selected array
+      function selectArrInit(){
+        selected = new Array(s.rows);
+        for(var i=0; i<s.cols;i++){
+          selected[i] = new Array(s.cols);
+        }
+
+        for(var i=0; i<s.rows;i++){
+          for(var j=0; j<s.cols; j++){
+            selected[i][j] = 0;
+          }
+        }
+      }
+
+      //clear any selections in grid
+      function clearSelect(){
+        for(var i=0; i<s.rows;i++){
+          for(var j=0; j<s.cols; j++){
+            selected[i][j] =0;
+          }
+        }
+      }
+
+      //select a cell from grid. Record in selected array
+      function select(sX,sY){
+        if(stage==0){
+          if(grid[sY][sX]==0){
+            for(var i=0; i<s.rows;i++){
+              for(var j=0; j<s.cols; j++){
+                if(i==sY && j==sX){
+                  if(selected[i][j]==0){
+                    selected[i][j] = 1;
+                  } else {
+                    selected[i][j] = 0
+                  }
+                } else {
+                  selected[i][j] = 0;
+                }
+              }
+            }
+          } else {
+            //cell not empty.
+            alert("Cell already occupied. (cannot change)");
+          }
+        }
+      }
+
+      //return selected cell's location
+      function getSelected(){
+        for(var i=0; i<s.rows;i++){
+          for(var j=0; j<s.cols; j++){
+            if(selected[i][j] == 1){
+              return [i,j];
+            }
+          }
+        }
+        return [0,0];
+      }
+
+      //check if any cells are selected
+      function isAnySelected(){
+        var isSelected = false;
+        for(var i=0; i<s.rows;i++){
+          for(var j=0; j<s.cols; j++){
+            if(selected[i][j] == 1){
+              isSelected = true;
+            }
+          }
+        }
+        return isSelected;
+      }
+
+      //draw canvas to screen
+      function drawCanvas(){
+        c.clearRect(0,0,400,400);
+
+        for(var i=0; i<s.rows;i++){
+          for(var j=0; j<s.cols; j++){
+            var x = j * s.width;
+            var y = i * s.height;
+
+            //display image according to grid
+            if(selected[i][j]==1){
+                c.drawImage(selectedPic,x,y);
+            } else {
+              if(grid[i][j]==1){
+                c.drawImage(heroPic,x,y);
+              } else if(grid[i][j]==2){
+                c.drawImage(obstaclePic,x,y);
+              } else if(grid[i][j]==3){
+                c.drawImage(robotPic,x,y);
+              } else if(grid[i][j]==4){
+                c.drawImage(treasurePic,x,y);
+              } else {
+                c.drawImage(defaultPic,x,y);
+            }
+          }
+        }
+      }
+
+      //display text according to stage of game
+      var canv = document.getElementById("gCanvas");
+      var ctx=canv.getContext("2d");
+      if(stage==1){
+      ctx.font="14px Georgia";
+      ctx.fillText("Score : " + score,0,320);
+      ctx.fillText("Round : " + round,0,340);
+    } else if(stage==2){
+      ctx.fillText("Game Over",0,340);
+    }
+    }
+
+    </script>
+
+  </head>
+<body>
+  <div id="controls">
+
+  </div>
+  <div id="gameCanvas">
+    <canvas id="gCanvas" width = "400" height="400"></canvas>
+  </div>
+  <form name="form" id="form">
+  <input type="button" value="Play" onclick="play()">
+</br>
+  <input type="button" value="End" onclick="end()">
+</br></br>
+  <b>Instructions</b>
+</br>
+  -------------------
+</br>
+  1. Place objects onto the grid by selecting a cell and clicking on one of the following:
+</br>
+    -'o' for an obstacle
+</br>
+    -'h' for the hero
+</br>
+    -'k' for a killer robot
+</br>
+    -'1-9' for a treasure worth 1-9 gold
+</br></br>
+
+  2. Press play and move with the 'a','d','x','w' keys
+</br></br>
+
+  3. The aim is to collect most treasures without dying
+
+</form>
+</br>
+</body>
+</html>
